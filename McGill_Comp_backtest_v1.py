@@ -52,6 +52,16 @@ def calculate_sharpe_ratio(returns, risk_free_rate=0.02):
     sharpe_ratio = (annualized_return - risk_free_rate) / annualized_volatility
     return annualized_return, annualized_volatility, sharpe_ratio
 
+def calculate_sortino_ratio(returns, risk_free_rate=0.02):
+    """Calculate the annualized Sortino ratio of a portfolio.
+    """
+    mean_return = returns.mean()
+    std_return = returns[returns < 0].std()
+    annualized_return = mean_return * 252  # 252 trading days
+    annualized_volatility = std_return * np.sqrt(252)
+    sortino_ratio = (annualized_return - risk_free_rate) / annualized_volatility
+    return sortino_ratio
+
 def calculate_alpha(portfolio_returns, benchmark_returns, risk_free_rate=0.02):
     """Calculate the alpha of a portfolio, using the CAPM model.
     """
@@ -61,7 +71,7 @@ def calculate_alpha(portfolio_returns, benchmark_returns, risk_free_rate=0.02):
     beta = covariance_matrix[0, 1] / covariance_matrix[1, 1]
     alpha = portfolio_excess_returns.mean() - beta * benchmark_excess_returns.mean()
     annualized_alpha = alpha * 252
-    return annualized_alpha
+    return annualized_alpha, beta
 
 annualized_return_p1, annualized_volatility_p1, sharpe_ratio_p1 = calculate_sharpe_ratio(
     basedata['Portfolio1_Returns'], risk_free_rate=0.02
@@ -72,6 +82,8 @@ annualized_return_p2, annualized_volatility_p2, sharpe_ratio_p2 = calculate_shar
 )
 
 alpha_p1 = calculate_alpha(basedata['Portfolio1_Returns'], basedata['Portfolio2_Returns'], risk_free_rate=0.02)
+sorino_ratio_p1 = calculate_sortino_ratio(basedata['Portfolio1_Returns'], risk_free_rate=0.02)
+sorino_ratio_p2 = calculate_sortino_ratio(basedata['Portfolio2_Returns'], risk_free_rate=0.02)
 
 print(f"Portfolio1 Annualized Return: {annualized_return_p1:.4%}")
 print(f"Portfolio1 Annualized Volatility: {annualized_volatility_p1:.4%}")
@@ -79,7 +91,9 @@ print(f"Portfolio1 Standard Deviation: {basedata['Portfolio1_Returns'].std():.4f
 print(f"Portfolio1 Initial Balance: $1")
 print(f"Portfolio1 Final Balance: ${basedata['Portfolio1'].iloc[-1]:.2f}\n")
 print(f"Portfolio1 Sharpe Ratio: {sharpe_ratio_p1:.4f}")
-print(f"Portfolio1 Alpha: {alpha_p1:.4f}\n")
+print(f"Portfolio1 Sortino Ratio: {sorino_ratio_p1:.4f}\n")
+print(f"Portfolio1 Alpha: {alpha_p1[0]:.4%}")
+print(f"Portfolio1 Beta: {alpha_p1[1]:.4f}\n")
 
 print(f"Benchmark Annualized Return: {annualized_return_p2:.4%}")
 print(f"Benchmark Annualized Volatility: {annualized_volatility_p2:.4%}")
@@ -87,6 +101,7 @@ print(f"Benchmark Standard Deviation: {basedata['Portfolio2_Returns'].std():.4f}
 print(f"Benchmark Initial Balance: $1")
 print(f"Benchmark Final Balance: ${basedata['Portfolio2'].iloc[-1]:.2f}\n")
 print(f"Benchmark Sharpe Ratio: {sharpe_ratio_p2:.4f}")
+print(f"Benchmark Sortino Ratio: {sorino_ratio_p2:.4f}\n")
 
 
 print(basedata)

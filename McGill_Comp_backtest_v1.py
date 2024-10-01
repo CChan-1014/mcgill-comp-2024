@@ -6,7 +6,7 @@ import numpy as np
 df = pd.read_excel('Portfolio.xlsx')
 
 weightings1 = dict(zip(df['Tickers'], df['Weights']))
-weightings2 = {"SPY": 100}  # Benchmark portfolio
+weightings2 = {"SPY": 100}  # Benchmark
 
 members = list(df['Tickers']) + ["SPY"]
 
@@ -28,7 +28,6 @@ if len(members) > 1:
 # Start date
 basedata = basedata[basedata["Date"] > "2010-01-01"]
 
-# Reset index after filtering dates
 basedata.reset_index(drop=True, inplace=True)
 
 # Normalise the price data (start with $1)
@@ -44,12 +43,25 @@ basedata['Portfolio2_Returns'] = basedata['Portfolio2'].pct_change()
 basedata = basedata.dropna(subset=['Portfolio1_Returns', 'Portfolio2_Returns'])
 
 def calculate_sharpe_ratio(returns, risk_free_rate=0.02):
+    """Calculate the annualized Sharpe ratio of a portfolio.
+    """
     mean_return = returns.mean()
     std_return = returns.std()
     annualized_return = mean_return * 252  # 252 trading days
     annualized_volatility = std_return * np.sqrt(252)
     sharpe_ratio = (annualized_return - risk_free_rate) / annualized_volatility
     return annualized_return, annualized_volatility, sharpe_ratio
+
+def calculate_alpha(portfolio_returns, benchmark_returns, risk_free_rate=0.02):
+    """Calculate the alpha of a portfolio, using the CAPM model.
+    """
+    portfolio_excess_returns = portfolio_returns - risk_free_rate / 252 # 252 trading days
+    benchmark_excess_returns = benchmark_returns - risk_free_rate / 252
+    covariance_matrix = np.cov(portfolio_excess_returns, benchmark_excess_returns)
+    beta = covariance_matrix[0, 1] / covariance_matrix[1, 1]
+    alpha = portfolio_excess_returns.mean() - beta * benchmark_excess_returns.mean()
+    annualized_alpha = alpha * 252
+    return annualized_alpha
 
 annualized_return_p1, annualized_volatility_p1, sharpe_ratio_p1 = calculate_sharpe_ratio(
     basedata['Portfolio1_Returns'], risk_free_rate=0.02
@@ -59,12 +71,21 @@ annualized_return_p2, annualized_volatility_p2, sharpe_ratio_p2 = calculate_shar
     basedata['Portfolio2_Returns'], risk_free_rate=0.02
 )
 
+alpha_p1 = calculate_alpha(basedata['Portfolio1_Returns'], basedata['Portfolio2_Returns'], risk_free_rate=0.02)
+
 print(f"Portfolio1 Annualized Return: {annualized_return_p1:.4%}")
 print(f"Portfolio1 Annualized Volatility: {annualized_volatility_p1:.4%}")
-print(f"Portfolio1 Sharpe Ratio: {sharpe_ratio_p1:.4f}\n")
+print(f"Portfolio1 Standard Deviation: {basedata['Portfolio1_Returns'].std():.4f}\n")
+print(f"Portfolio1 Initial Balance: $1")
+print(f"Portfolio1 Final Balance: ${basedata['Portfolio1'].iloc[-1]:.2f}\n")
+print(f"Portfolio1 Sharpe Ratio: {sharpe_ratio_p1:.4f}")
+print(f"Portfolio1 Alpha: {alpha_p1:.4f}\n")
 
 print(f"Benchmark Annualized Return: {annualized_return_p2:.4%}")
 print(f"Benchmark Annualized Volatility: {annualized_volatility_p2:.4%}")
+print(f"Benchmark Standard Deviation: {basedata['Portfolio2_Returns'].std():.4f}\n")
+print(f"Benchmark Initial Balance: $1")
+print(f"Benchmark Final Balance: ${basedata['Portfolio2'].iloc[-1]:.2f}\n")
 print(f"Benchmark Sharpe Ratio: {sharpe_ratio_p2:.4f}")
 
 

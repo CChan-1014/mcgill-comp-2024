@@ -81,6 +81,9 @@ annualized_return_p2, annualized_volatility_p2, sharpe_ratio_p2 = calculate_shar
 )
 sortino_ratio_p2 = calculate_sortino_ratio(basedata['Portfolio2_Returns'])
 
+#Annualised Alpha, information, maximum rawedown ,maixmum one-month loss, portfoliuo turnover
+
+
 metrics = {
     'Metric': [
         'Annualized Return', 

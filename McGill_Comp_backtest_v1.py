@@ -5,7 +5,7 @@ import numpy as np
 import seaborn as sb
 from matplotlib.ticker import PercentFormatter
 
-df = pd.read_csv('Portfolio_u.csv')
+df = pd.read_csv('Portfolio.csv')
 
 weightings1 = dict(zip(df['Tickers'], df['Weights']))
 weightings2 = {"SPY": 100}  # Benchmark
@@ -41,6 +41,11 @@ basedata['Portfolio1_Returns'] = basedata['Portfolio1'].pct_change()
 basedata['Portfolio2_Returns'] = basedata['Portfolio2'].pct_change()
 basedata = basedata.dropna(subset=['Portfolio1_Returns', 'Portfolio2_Returns'])
 
+# Prepare the returns data
+returns_data = basedata[['Date', 'Portfolio1_Returns', 'Portfolio2_Returns']].copy()
+
+print("\nReturns data has been saved to 'portfolio_returns.csv'.")
+
 # Calculations:
 
 def calculate_sharpe_ratio(returns, risk_free_rate=0.02):
@@ -69,6 +74,25 @@ def calculate_alpha_beta(portfolio_returns, benchmark_returns, risk_free_rate=0.
     annualized_alpha = alpha * 252
     return annualized_alpha, beta
 
+def calculate_information_ratio(portfolio_returns, benchmark_returns):
+    excess_returns = portfolio_returns - benchmark_returns 
+    mean_excess_return = excess_returns.mean() * 252
+    tracking_error = excess_returns.std() * np.sqrt(252)
+    information_ratio = mean_excess_return / tracking_error
+    return information_ratio, excess_returns
+
+def calculate_max_drawdown(portfolio_values):
+    cumulative_max = portfolio_values.cummax()
+    drawdown = (portfolio_values - cumulative_max) / cumulative_max
+    max_drawdown = drawdown.min()
+    return max_drawdown
+
+def calculate_max_one_month_drawdown(portfolio_returns, window=21):
+    """Calculate cumulative returns over rolling windows"""
+    cumulative_returns = (portfolio_returns + 1).rolling(window).apply(np.prod, raw=True) - 1
+    max_one_month_drawdown = cumulative_returns.min()
+    return max_one_month_drawdown
+
 annualized_return_p1, annualized_volatility_p1, sharpe_ratio_p1 = calculate_sharpe_ratio(
     basedata['Portfolio1_Returns']
 )
@@ -76,22 +100,30 @@ sortino_ratio_p1 = calculate_sortino_ratio(basedata['Portfolio1_Returns'])
 alpha_p1, beta_p1 = calculate_alpha_beta(
     basedata['Portfolio1_Returns'], basedata['Portfolio2_Returns']
 )
+information_ratio, excess_returns = calculate_information_ratio(
+    basedata['Portfolio1_Returns'], basedata['Portfolio2_Returns']
+)
+max_drawdown_p1 = calculate_max_drawdown(basedata['Portfolio1'])
+max_one_month_drawdown_p1 = calculate_max_one_month_drawdown(basedata['Portfolio1_Returns'])
+
 annualized_return_p2, annualized_volatility_p2, sharpe_ratio_p2 = calculate_sharpe_ratio(
     basedata['Portfolio2_Returns']
 )
 sortino_ratio_p2 = calculate_sortino_ratio(basedata['Portfolio2_Returns'])
-
-#Annualised Alpha, information, maximum rawedown ,maixmum one-month loss, portfoliuo turnover
-
+max_drawdown_p2 = calculate_max_drawdown(basedata['Portfolio2'])
+max_one_month_drawdown_p2 = calculate_max_one_month_drawdown(basedata['Portfolio2_Returns'])
 
 metrics = {
     'Metric': [
         'Annualized Return', 
         'Annualized Volatility', 
         'Sharpe Ratio', 
-        'Sortino Ratio', 
+        'Sortino Ratio',
+        'Information Ratio', 
         'Alpha', 
         'Beta', 
+        'Maximum Drawdown',
+        'Max 1-Month Drawdown',
         'Initial Balance', 
         'Final Balance'
     ],
@@ -100,8 +132,11 @@ metrics = {
         f"{annualized_volatility_p1:.2%}", 
         f"{sharpe_ratio_p1:.2f}", 
         f"{sortino_ratio_p1:.2f}", 
+        f"{information_ratio:.2f}",
         f"{alpha_p1:.2%}", 
         f"{beta_p1:.2f}", 
+        f"{max_drawdown_p1:.2%}",
+        f"{max_one_month_drawdown_p1:.2%}",
         f"${1:.2f}", 
         f"${basedata['Portfolio1'].iloc[-1]:.2f}"
     ],
@@ -110,8 +145,11 @@ metrics = {
         f"{annualized_volatility_p2:.2%}", 
         f"{sharpe_ratio_p2:.2f}", 
         f"{sortino_ratio_p2:.2f}", 
+        '-',  # No Information Ratio for Benchmark
         '-',  # No Alpha and Beta for Benchmark
         '-', 
+        f"{max_drawdown_p2:.2%}",
+        f"{max_one_month_drawdown_p2:.2%}",
         f"${1:.2f}", 
         f"${basedata['Portfolio2'].iloc[-1]:.2f}"
     ]

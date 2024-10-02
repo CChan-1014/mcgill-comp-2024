@@ -5,7 +5,7 @@ import numpy as np
 import seaborn as sb
 from matplotlib.ticker import PercentFormatter
 
-df = pd.read_csv('Portfolio.csv')
+df = pd.read_csv('Real_Stock_Data.csv')
 
 weightings1 = dict(zip(df['Tickers'], df['Weights']))
 weightings2 = {"SPY": 100}  # Benchmark
@@ -33,18 +33,16 @@ basedata.reset_index(drop=True, inplace=True)
 
 # Normalize the price data (start with $1)
 for ticker in members:
-    basedata[ticker] = basedata[ticker] / basedata[ticker].iloc[0]
+    try:
+        basedata[ticker] = basedata[ticker] / basedata[ticker].iloc[0]
+    except KeyError:
+        pass
 
 basedata = Backtester(weightings1, basedata, "Portfolio1")
 basedata = Backtester(weightings2, basedata, "Portfolio2")
 basedata['Portfolio1_Returns'] = basedata['Portfolio1'].pct_change()
 basedata['Portfolio2_Returns'] = basedata['Portfolio2'].pct_change()
 basedata = basedata.dropna(subset=['Portfolio1_Returns', 'Portfolio2_Returns'])
-
-# Prepare the returns data
-returns_data = basedata[['Date', 'Portfolio1_Returns', 'Portfolio2_Returns']].copy()
-
-print("\nReturns data has been saved to 'portfolio_returns.csv'.")
 
 # Calculations:
 
@@ -88,7 +86,6 @@ def calculate_max_drawdown(portfolio_values):
     return max_drawdown
 
 def calculate_max_one_month_drawdown(portfolio_returns, window=21):
-    """Calculate cumulative returns over rolling windows"""
     cumulative_returns = (portfolio_returns + 1).rolling(window).apply(np.prod, raw=True) - 1
     max_one_month_drawdown = cumulative_returns.min()
     return max_one_month_drawdown

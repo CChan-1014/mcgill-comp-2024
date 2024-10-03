@@ -5,7 +5,7 @@ import numpy as np
 import seaborn as sb
 from matplotlib.ticker import PercentFormatter
 
-df = pd.read_csv('Real_Stock_Data.csv')
+df = pd.read_csv('Portfolio2.csv')
 
 weightings1 = dict(zip(df['Tickers'], df['Weights']))
 weightings2 = {"SPY": 100}  # Benchmark

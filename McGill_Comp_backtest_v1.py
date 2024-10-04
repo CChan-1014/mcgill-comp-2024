@@ -5,46 +5,167 @@ import numpy as np
 import seaborn as sb
 from matplotlib.ticker import PercentFormatter
 
-df = pd.read_csv('Real_Stock_Data.csv')
+# ============================
+# 1. Load and Prepare Weightings
+# ============================
 
+# Read the CSV file
+df = pd.read_csv('stock_ticker_weights.csv')
+
+# Drop duplicate tickers, keeping only the first occurrence
+df = df.drop_duplicates(subset='Tickers', keep='first')
+
+# Create the weightings dictionary
 weightings1 = dict(zip(df['Tickers'], df['Weights']))
 weightings2 = {"SPY": 100}  # Benchmark
 
-members = list(df['Tickers']) + ["SPY"]
+# Initial list of tickers to fetch data for
+members = list(weightings1.keys()) + ["SPY"]
 
-def Backtester(weightings, data, name):
-    data[name] = sum([float(weightings[i]) * data[i] / 100 for i in weightings])
-    return data
+# ============================
+# 2. Fetch Historical Price Data
+# ============================
 
-basedata = yf.Ticker(members[0]).history(period="max").reset_index()[["Date", "Close"]]
-basedata["Date"] = pd.to_datetime(basedata["Date"])
-basedata = basedata.rename(columns={"Close": members[0]})
+def fetch_price_data(ticker):
+    """
+    Fetch historical adjusted close prices for a given ticker.
+    Returns a DataFrame with 'Date' and 'Close' columns.
+    """
+    try:
+        ticker_data = yf.Ticker(ticker).history(period="max").reset_index()[["Date", "Close"]]
+        if ticker_data.empty:
+            print(f"No data found for ticker: {ticker}")
+            return None
+        ticker_data["Date"] = pd.to_datetime(ticker_data["Date"])
+        ticker_data = ticker_data.rename(columns={"Close": ticker})
+        return ticker_data
+    except Exception as e:
+        print(f"Error fetching data for ticker {ticker}: {e}")
+        return None
 
-if len(members) > 1:
-    for ticker in members[1:]:
-        newdata = yf.Ticker(ticker).history(period="max").reset_index()[["Date", "Close"]]
-        newdata["Date"] = pd.to_datetime(newdata["Date"])
-        newdata = newdata.rename(columns={"Close": ticker})
-        basedata = pd.merge(basedata, newdata, on="Date", how='inner')
+# Initialize basedata with the first ticker
+initial_ticker = members[0]
+print(f"Fetching data for {initial_ticker}")
+basedata = fetch_price_data(initial_ticker)
 
-# Start date
-basedata = basedata[basedata["Date"] > "2000-01-01"]
+if basedata is None:
+    print(f"Error: No data fetched for the initial ticker {initial_ticker}. Exiting.")
+    exit()
+
+# Fetch and merge data for the remaining tickers
+for ticker in members[1:]:
+    print(f"Fetching data for {ticker}")
+    ticker_data = fetch_price_data(ticker)
+    if ticker_data is None:
+        print(f"Removing {ticker} from weightings and members due to missing data.")
+        if ticker in weightings1:
+            del weightings1[ticker]
+        continue
+    basedata = pd.merge(basedata, ticker_data, on="Date", how='inner')
+
+# Update members list after removing tickers without data
+members = list(weightings1.keys()) + ["SPY"]
+
+# ============================
+# 3. Filter Data by Date
+# ============================
+
+# Check if basedata is empty after merging
+print("basedata shape:", basedata.shape)
+if basedata.empty:
+    print("Error: basedata is empty after merging data.")
+    exit()
+
+# Define start date for analysis
+start_date = "2010-01-01"
+basedata = basedata[basedata["Date"] > start_date]
 basedata.reset_index(drop=True, inplace=True)
 
-# Normalize the price data (start with $1)
-for ticker in members:
-    try:
-        basedata[ticker] = basedata[ticker] / basedata[ticker].iloc[0]
-    except KeyError:
-        pass
+print(f"Data date range after filtering (>{start_date}):")
+print("Start date:", basedata["Date"].min())
+print("End date:", basedata["Date"].max())
 
+if basedata.empty:
+    print("Error: basedata is empty after date filtering.")
+    exit()
+
+# ============================
+# 4. Normalize Price Data
+# ============================
+
+# Function to normalize ticker prices
+def normalize_prices(df, tickers):
+    """
+    Normalize each ticker's price by dividing by its first available price.
+    """
+    valid_tickers = []
+    for ticker in tickers:
+        if ticker not in df.columns:
+            print(f"Ticker {ticker} not found in basedata columns. Skipping normalization.")
+            continue
+        if df[ticker].empty:
+            print(f"Ticker {ticker} has no data. Skipping normalization.")
+            continue
+        try:
+            df[ticker] = df[ticker] / df[ticker].iloc[0]
+            valid_tickers.append(ticker)
+        except IndexError:
+            print(f"IndexError: Ticker {ticker} has no data to normalize. Skipping.")
+    return df, valid_tickers
+
+# Normalize prices and get list of tickers with successful normalization
+basedata, valid_tickers = normalize_prices(basedata, members)
+
+# Update weightings1 to include only valid tickers
+weightings1 = {ticker: weightings1[ticker] for ticker in weightings1 if ticker in valid_tickers}
+
+# Re-normalize weights to sum to 100%
+total_weight = sum(weightings1.values())
+if total_weight != 100:
+    weightings1 = {ticker: (weight / total_weight) * 100 for ticker, weight in weightings1.items()}
+    print("Weights have been rebalanced to sum to 100%.")
+
+# Update members list after normalization
+members = list(weightings1.keys()) + ["SPY"]
+
+# ============================
+# 5. Define Backtester Function
+# ============================
+
+def Backtester(weightings, data, name):
+    """
+    Calculate portfolio value based on provided weights.
+    """
+    portfolio_value = 0
+    for ticker, weight in weightings.items():
+        if ticker in data.columns:
+            portfolio_value += float(weight) * data[ticker] / 100
+        else:
+            print(f"Warning: Ticker {ticker} not found in data. Skipping in portfolio calculation.")
+    data[name] = portfolio_value
+    return data
+
+# ============================
+# 6. Calculate Portfolio Values
+# ============================
+
+# Run Backtester for Portfolio1 (Your Portfolio)
 basedata = Backtester(weightings1, basedata, "Portfolio1")
+
+# Run Backtester for Portfolio2 (Benchmark: SPY)
 basedata = Backtester(weightings2, basedata, "Portfolio2")
+
+# ============================
+# 7. Calculate Returns
+# ============================
+
 basedata['Portfolio1_Returns'] = basedata['Portfolio1'].pct_change()
 basedata['Portfolio2_Returns'] = basedata['Portfolio2'].pct_change()
 basedata = basedata.dropna(subset=['Portfolio1_Returns', 'Portfolio2_Returns'])
 
-# Calculations:
+# ============================
+# 8. Define Performance Metrics Functions
+# ============================
 
 def calculate_sharpe_ratio(returns, risk_free_rate=0.02):
     mean_return = returns.mean()
@@ -90,6 +211,11 @@ def calculate_max_one_month_drawdown(portfolio_returns, window=21):
     max_one_month_drawdown = cumulative_returns.min()
     return max_one_month_drawdown
 
+# ============================
+# 9. Calculate Performance Metrics
+# ============================
+
+# Portfolio 1 Metrics
 annualized_return_p1, annualized_volatility_p1, sharpe_ratio_p1 = calculate_sharpe_ratio(
     basedata['Portfolio1_Returns']
 )
@@ -103,6 +229,7 @@ information_ratio, excess_returns = calculate_information_ratio(
 max_drawdown_p1 = calculate_max_drawdown(basedata['Portfolio1'])
 max_one_month_drawdown_p1 = calculate_max_one_month_drawdown(basedata['Portfolio1_Returns'])
 
+# Portfolio 2 Metrics (Benchmark: SPY)
 annualized_return_p2, annualized_volatility_p2, sharpe_ratio_p2 = calculate_sharpe_ratio(
     basedata['Portfolio2_Returns']
 )
@@ -110,6 +237,7 @@ sortino_ratio_p2 = calculate_sortino_ratio(basedata['Portfolio2_Returns'])
 max_drawdown_p2 = calculate_max_drawdown(basedata['Portfolio2'])
 max_one_month_drawdown_p2 = calculate_max_one_month_drawdown(basedata['Portfolio2_Returns'])
 
+# Compile Metrics into a DataFrame
 metrics = {
     'Metric': [
         'Annualized Return', 
@@ -152,12 +280,20 @@ metrics = {
     ]
 }
 
-# Data output
+# Create Metrics DataFrame
 metrics_df = pd.DataFrame(metrics)
 metrics_df.set_index('Metric', inplace=True)
 
+# ============================
+# 10. Display and Save Metrics
+# ============================
+
 print("\nPortfolio Performance Metrics:\n")
 print(metrics_df.to_string())
+
+# ============================
+# 11. Visualization
+# ============================
 
 sb.set_theme(style='darkgrid')
 
@@ -174,12 +310,14 @@ plt.rcParams['legend.title_fontsize'] = 12
 
 plt.figure(figsize=(12, 6), dpi=100)
 
-# Melt the data
+# Prepare data for plotting
 plot_data = basedata[['Date', 'Portfolio1', 'Portfolio2']].copy()
 plot_data = plot_data.melt('Date', var_name='Portfolio', value_name='Normalized Value')
 
+# Rename Portfolio2 for clarity
 plot_data['Portfolio'] = plot_data['Portfolio'].replace({'Portfolio2': 'Benchmark: SPY'})
 
+# Plotting
 sb.lineplot(data=plot_data, x='Date', y='Normalized Value', hue='Portfolio')
 
 plt.title('Portfolio vs. Benchmark Performance')
@@ -189,5 +327,19 @@ plt.legend(title='', loc='upper left')
 plt.grid(True, linestyle='--', linewidth=0.5, alpha=0.7)
 plt.tight_layout()
 
+# Save and show plot
 plt.savefig('portfolio_performance.png', dpi=300)
 plt.show()
+
+# ============================
+# 12. Save Weights to CSV
+# ============================
+
+# Save selected stocks and weights to CSV (weights in percentages)
+selected_stocks = df[df['Tickers'].isin(weightings1.keys())].copy()
+selected_stocks['Weights'] = selected_stocks['Weights']  # Already normalized to sum to 100%
+selected_stocks[['Tickers', 'Weights']].to_csv('stock_ticker_weights.csv', index=False)
+
+# Verify that weights sum to 100%
+total_weight = selected_stocks['Weights'].sum()
+print(f"Total Weight (should be 100%): {total_weight:.2f}%")
